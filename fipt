@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""fipt (fuck-it-player-tui) — терминальный музыкальный плеер на mpv.
+
+Использование:  fipt [файл | папка | ссылка ...]
+"""
+import os
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+MIN_TEXTUAL = (0, 86)
+
+HELP = """fipt (fuck-it-player-tui) — терминальный музыкальный плеер на mpv
+
+  fipt                       открыть оболочку (очередь восстановится)
+  fipt song.mp3 ~/Music URL  сразу проиграть файлы / папки / ссылки
+  fipt --version | --help
+
+Нужны: python3 >= 3.10, textual, mpv (в PATH или путь в настройках). Необязательно: mutagen (названия из тегов).
+"""
+
+
+def _check_textual() -> None:
+    try:
+        import textual
+    except ImportError:
+        sys.exit("Textual не установлен / Textual is not installed:\n  pip install textual")
+    try:
+        version = tuple(int(x) for x in textual.__version__.split(".")[:2])
+    except (ValueError, AttributeError):
+        return
+    if version < MIN_TEXTUAL:
+        print(
+            f"[!] Textual {textual.__version__} староват, нужен >= {'.'.join(map(str, MIN_TEXTUAL))} "
+            "(темы, подсказки). Обновите: pip install -U textual",
+            file=sys.stderr,
+        )
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    if "--help" in args or "-h" in args:
+        print(HELP)
+        return
+    if "--version" in args:
+        from fiptui import __version__
+        print(__version__)
+        return
+    if sys.platform.startswith("win"):
+        sys.exit("fipt использует unix-сокет mpv: на Windows запустите в WSL.")
+    _check_textual()
+    from fiptui.app import FiptApp
+
+    FiptApp(targets=args).run()
+
+
+if __name__ == "__main__":
+    main()

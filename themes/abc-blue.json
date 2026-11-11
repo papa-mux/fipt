@@ -1,0 +1,14 @@
+{
+  "name": "abc-blue",
+  "dark": true,
+  "primary": "#4a90d9",
+  "secondary": "#6fb1fc",
+  "accent": "#ffd166",
+  "background": "#0b1f3a",
+  "surface": "#12305a",
+  "panel": "#173a6b",
+  "foreground": "#e6f0ff",
+  "warning": "#ffd166",
+  "error": "#ff6b6b",
+  "success": "#6bd49b"
+}

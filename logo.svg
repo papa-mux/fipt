@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 200" width="640" height="200" role="img" aria-label="fipt">
+  <rect width="640" height="200" rx="18" fill="#1e2327"/>
+  <rect x="14" y="14" width="612" height="172" rx="12" fill="none" stroke="#5ea1ff" stroke-opacity=".45" stroke-width="2"/>
+  <!-- play -->
+  <path d="M56 56 L56 144 L132 100 Z" fill="#5ea1ff"/>
+  <!-- eq bars -->
+  <g fill="#7fbbb3">
+    <rect x="156" y="104" width="10" height="40" rx="3"/>
+    <rect x="172" y="80" width="10" height="64" rx="3"/>
+    <rect x="188" y="92" width="10" height="52" rx="3"/>
+    <rect x="204" y="64" width="10" height="80" rx="3"/>
+    <rect x="220" y="96" width="10" height="48" rx="3"/>
+  </g>
+  <text x="262" y="118" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="72" font-weight="700" fill="#d3c6aa">fipt</text>
+  <text x="264" y="152" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="20" fill="#9da9a0">fuck-it-player-tui</text>
+</svg>

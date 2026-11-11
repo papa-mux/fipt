@@ -1,0 +1,14 @@
+{
+  "name": "terminal-green",
+  "dark": true,
+  "primary": "#3ddc84",
+  "secondary": "#2fa866",
+  "accent": "#e5e500",
+  "background": "#0a0f0a",
+  "surface": "#101a10",
+  "panel": "#162216",
+  "foreground": "#b6f5b6",
+  "warning": "#e5e500",
+  "error": "#ff5f5f",
+  "success": "#3ddc84"
+}

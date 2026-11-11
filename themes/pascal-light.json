@@ -1,0 +1,14 @@
+{
+  "name": "pascal-light",
+  "dark": false,
+  "primary": "#1f6feb",
+  "secondary": "#6e7781",
+  "accent": "#d9730d",
+  "background": "#f6f8fa",
+  "surface": "#ffffff",
+  "panel": "#eaeef2",
+  "foreground": "#1f2328",
+  "warning": "#9a6700",
+  "error": "#cf222e",
+  "success": "#1a7f37"
+}

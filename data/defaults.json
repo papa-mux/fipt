@@ -1,0 +1,20 @@
+{
+  "settings": {
+    "language": "ru",
+    "theme": "pascal-dark",
+    "mpv_path": "mpv",
+    "mpv_args": "",
+    "video": "off",
+    "replaygain": "no",
+    "terminal_vo": "tct",
+    "ytdl": true,
+    "volume": 80,
+    "seek_step": 5,
+    "volume_step": 5,
+    "titles_from_tags": true,
+    "play_folder": true,
+    "remember_queue": true,
+    "show_log": true,
+    "remember_volume": true
+  }
+}

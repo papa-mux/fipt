@@ -1,0 +1,14 @@
+{
+  "name": "pascal-dark",
+  "dark": true,
+  "primary": "#5ea1ff",
+  "secondary": "#7aa2f7",
+  "accent": "#ffb86c",
+  "background": "#1a1b26",
+  "surface": "#24283b",
+  "panel": "#2a2f45",
+  "foreground": "#c0caf5",
+  "warning": "#e0af68",
+  "error": "#f7768e",
+  "success": "#9ece6a"
+}
