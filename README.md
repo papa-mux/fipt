@@ -202,8 +202,8 @@ Your settings in ~/.config/fipt are kept; delete that folder by hand if you want
 
 Credits
 
-· abc-pascal-tui — fipt is a direct fork of this project; the architecture, settings, themes, i18n, command palette and modal screens are taken from there.
-· mpv — playback engine, a separate program under its own license (GPL / LGPL).
+· [abc-pascal-tui](https://github.com/kuzmak161-creator/abc-pascal-tui) — fipt is a direct fork of this project; the architecture, settings, themes, i18n, command palette and modal screens are taken from there.
+ · mpv — playback engine, a separate program under its own license (GPL / LGPL).
 · Textual — the TUI framework the interface is built on.
 · mutagen and yt-dlp — optional dependencies for tags and links.
 
