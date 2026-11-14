@@ -1,10 +1,14 @@
 {
   "settings": {
     "language": "ru",
-    "theme": "pascal-dark",
+    "theme": "fipt-dark",
     "mpv_path": "mpv",
     "mpv_args": "",
     "video": "off",
+    "layout": "mobile",
+    "icons": "braille",
+    "seekbar": "line",
+    "queue_border": "round",
     "replaygain": "no",
     "terminal_vo": "tct",
     "ytdl": true,
@@ -14,7 +18,9 @@
     "titles_from_tags": true,
     "play_folder": true,
     "remember_queue": true,
-    "show_log": true,
-    "remember_volume": true
+    "show_log": false,
+    "remember_volume": true,
+    "xf86_media_keys": true,
+    "mpris": true
   }
 }

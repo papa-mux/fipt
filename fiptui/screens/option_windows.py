@@ -63,7 +63,7 @@ class PlaybackScreen(_Window):
     """Воспроизведение. Результат: dict настроек или None."""
 
     CSS = "PlaybackScreen { align: center middle; background: rgba(0,0,0,0.6); }" + _CSS
-    SWITCHES = ("titles_from_tags", "play_folder", "ytdl", "remember_queue", "remember_volume", "show_log")
+    SWITCHES = ("titles_from_tags", "play_folder", "ytdl", "remember_queue", "remember_volume", "show_log", "xf86_media_keys", "mpris")
     INTS = ("volume", "seek_step", "volume_step")
     SELECTS = ("video", "replaygain", "terminal_vo")
 
@@ -137,6 +137,11 @@ class ThemesScreen(_Window):
             with VerticalScroll(id="win_scroll"):
                 yield Label(self._t("set_theme"), classes="win_label")
                 yield Select(opts, value=cur, allow_blank=False, id="sel_theme")
+                for key in ("layout", "icons", "seekbar", "queue_border"):
+                    choices = [(self._t(f"opt_{key}_{v}"), v) for v in CHOICES[key]]
+                    yield Label(self._t(f"set_{key}"), classes="win_label")
+                    yield Select(choices, value=_pick(choices, self._s.get(key, "")), allow_blank=False,
+                                 id=f"sel_{key}")
                 with Horizontal(id="theme_buttons"):
                     yield Button(self._t("btn_theme_new"), id="theme_new", classes="win_btn")
                     yield Button(self._t("btn_theme_edit"), id="theme_edit", classes="win_btn")
@@ -171,7 +176,12 @@ class ThemesScreen(_Window):
         if bid == "win_cancel":
             self.action_cancel()
         elif bid == "win_save":
-            self.dismiss({"theme": self._cur})
+            out: dict = {"theme": self._cur}
+            for key in ("layout", "icons", "seekbar", "queue_border"):
+                value = self.query_one(f"#sel_{key}", Select).value
+                if isinstance(value, str):
+                    out[key] = value
+            self.dismiss(out)
         elif bid == "theme_new":
             self._open_editor(None, False)
         elif bid == "theme_edit":

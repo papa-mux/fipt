@@ -36,80 +36,146 @@ from .screens import (
     PlaybackScreen,
     ThemesScreen,
     TracksScreen,
+    KeybindingsScreen,
 )
-from .settings import load_settings, sanitize, save_settings
-from .widgets import FlatButton, SeekBar
+from .settings import (
+    CHOICES, INT_LIMITS, KEYBINDING_DEFAULTS, effective_keys, load_settings, sanitize, save_settings)
+from .iconset import get_icon
+from .mpris import MprisService, PlayerView
+from .widgets import FlatButton, IconButton, SeekBar
+from .xf86 import XF86MediaKeys
 
 DEFAULT_THEME_FALLBACK = "textual-dark"
 
 # Настройки, после изменения которых mpv надо перезапустить.
 RESTART_KEYS = {"mpv_path", "mpv_args", "ytdl"}
 
-# (id кнопки, подпись, действие, ключ подсказки)
+# Классическая панель: (id, действие, иконка в iconset, размер: s 6x3 / l 8x4 клетки, ключ подсказки)
 CONTROLS = [
-    ("ctl_prev", "|◀", "prev", "tip_prev"),
-    ("ctl_back", "«", "seek(-1)", "tip_back"),
-    ("ctl_toggle", "▶❚❚", "toggle_pause", "tip_toggle"),
-    ("ctl_fwd", "»", "seek(1)", "tip_fwd"),
-    ("ctl_next", "▶|", "next", "tip_next"),
-    ("ctl_voldn", "−", "volume(-1)", "tip_voldn"),
-    ("ctl_volup", "+", "volume(1)", "tip_volup"),
-    ("ctl_repeat", "↻", "cycle_repeat", "tip_repeat"),
-    ("ctl_shuffle", "⇄", "shuffle", "tip_shuffle"),
+    ("ctl_shuffle", "shuffle", "shuffle", "s", "tip_shuffle"),
+    ("ctl_prev", "prev", "prev", "s", "tip_prev"),
+    ("ctl_back", "seek(-1)", "back", "s", "tip_back"),
+    ("ctl_toggle", "toggle_pause", "play", "l", "tip_toggle"),
+    ("ctl_fwd", "seek(1)", "fwd", "s", "tip_fwd"),
+    ("ctl_next", "next", "next", "s", "tip_next"),
+    ("ctl_repeat", "cycle_repeat", "repeat", "s", "tip_repeat"),
+    ("ctl_voldn", "volume(-1)", "voldn", "s", "tip_voldn"),
+    ("ctl_volup", "volume(1)", "volup", "s", "tip_volup"),
 ]
-CONTROL_ACTIONS = {cid: action for cid, _l, action, _t in CONTROLS}
+CONTROL_ACTIONS = {cid: action for cid, action, *_rest in CONTROLS}
+
+# Мобильная раскладка. Иконки: (id, действие, имя в iconset, размер: s 6x3 / l 8x4 клетки)
+MOBILE_ICONS = [
+    ("m_shuffle", "shuffle", "shuffle", "s"),
+    ("m_prev", "prev", "prev", "s"),
+    ("m_toggle", "toggle_pause", "play", "l"),
+    ("m_next", "next", "next", "s"),
+    ("m_repeat", "cycle_repeat", "repeat", "s"),
+]
+# Нижний ряд мелких кнопок: (id, подпись, действие, ключ подсказки)
+MOBILE_BUTTONS = [
+    ("m_voldn", "−", "volume(-1)", "tip_voldn"),
+    ("m_volup", "+", "volume(1)", "tip_volup"),
+    ("m_queue", "≡", "toggle_queue", "tip_queue"),
+    ("m_library", "♫", "open_library", "tip_library"),
+    ("m_settings", "⚙", "settings", "tip_settings"),
+]
+MOBILE_BUTTON_ACTIONS = {bid: action for bid, _l, action, _t in MOBILE_BUTTONS}
 
 
-def make_bindings(lang: str) -> list[Binding]:
-    return [
-        Binding("ctrl+q", "quit", tr(lang, "footer_quit"), key_display="^Q", priority=True),
-        Binding("ctrl+o", "open_library", tr(lang, "footer_library"), key_display="^O"),
-        Binding("space", "toggle_pause", tr(lang, "footer_pause"), key_display="Space"),
-        Binding("n", "next", tr(lang, "footer_next")),
-        Binding("p", "prev", tr(lang, "footer_prev")),
-        Binding("t", "tracks", tr(lang, "footer_tracks")),
-        Binding("f2", "settings", tr(lang, "footer_settings"), key_display="F2"),
-        Binding("q", "quit", "", show=False),
-        Binding("o", "open_library", "", show=False),
-        Binding("s", "settings", "", show=False),
-        Binding("u", "open_url", "", show=False),
-        Binding("left", "seek(-1)", "", show=False),
-        Binding("right", "seek(1)", "", show=False),
-        Binding("plus,equals_sign", "volume(1)", "", show=False),
-        Binding("minus", "volume(-1)", "", show=False),
-        Binding("m", "mute", "", show=False),
-        Binding("r", "cycle_repeat", "", show=False),
-        Binding("x", "shuffle", "", show=False),
-        Binding("left_square_bracket", "speed(-1)", "", show=False),
-        Binding("right_square_bracket", "speed(1)", "", show=False),
-        Binding("backslash", "speed(0)", "", show=False),
-        Binding("delete", "remove", "", show=False),
-        Binding("shift+up,K", "move(-1)", "", show=False),
-        Binding("shift+down,J", "move(1)", "", show=False),
-        Binding("c", "clear_queue", "", show=False),
-        Binding("v", "play_terminal", "", show=False),
-    ]
+# Действия, которые показываются в подвале: (действие, ключ перевода, как показывать клавишу)
+FOOTER_ACTIONS = {
+    "quit": ("footer_quit", "^Q"), "open_library": ("footer_library", "^O"),
+    "toggle_pause": ("footer_pause", "Space"), "next": ("footer_next", None),
+    "prev": ("footer_prev", None), "tracks": ("footer_tracks", None),
+    "toggle_queue": ("footer_queue", None), "settings": ("footer_settings", "F2"),
+}
+
+# Остальные действия — без подписи, только горячая клавиша.
+HIDDEN_ACTIONS = [
+    "open_url", "seek(-1)", "seek(1)", "volume(1)", "volume(-1)", "mute", "cycle_repeat", "shuffle",
+    "speed(-1)", "speed(1)", "speed(0)", "remove", "move(-1)", "move(1)", "clear_queue",
+    "play_terminal", "cycle_layout",
+]
 
 
-_INITIAL_LANG = load_settings().get("language", "ru")
+MANAGED_ACTIONS = frozenset(FOOTER_ACTIONS) | frozenset(HIDDEN_ACTIONS)
+
+
+def _priority(action: str, key: str) -> bool:
+    """Выход по Ctrl+… работает даже в поле ввода; одиночная буква (q) там должна печататься."""
+    return action == "quit" and key.startswith("ctrl+")
+
+
+def make_bindings(lang: str, overrides: dict | None = None) -> list[Binding]:
+    """Все клавиши приложения, по одному Binding на клавишу.
+
+    overrides — «действие -> клавиша(и)» из настроек (несколько клавиш — через запятую).
+    Один Binding на клавишу: так список можно пересобрать на лету и не зависеть от того,
+    как Textual разбирает «a,b». Сначала идут действия подвала, затем их доп. клавиши и скрытые действия.
+    """
+    footer: list[Binding] = []
+    extra: list[Binding] = []
+    for action, (label_key, display) in FOOTER_ACTIONS.items():
+        keys = effective_keys(action, overrides)
+        footer.append(Binding(
+            keys[0], action, tr(lang, label_key), show=True,
+            key_display=display if keys[0] == KEYBINDING_DEFAULTS[action] else None,
+            priority=_priority(action, keys[0])))
+        extra += [Binding(key, action, "", show=False, priority=_priority(action, key)) for key in keys[1:]]
+    for action in HIDDEN_ACTIONS:
+        extra += [Binding(key, action, "", show=False) for key in effective_keys(action, overrides)]
+    return footer + extra
+
+
+_INITIAL_SETTINGS = load_settings()
+_INITIAL_LANG = _INITIAL_SETTINGS.get("language", "ru")
 
 
 class FiptApp(App):
     COMMANDS = {SettingsCommands}
-    BINDINGS = make_bindings(_INITIAL_LANG)
+    BINDINGS = make_bindings(_INITIAL_LANG, _INITIAL_SETTINGS.get("keybindings"))   # сохранённые клавиши — с первого запуска
 
     CSS = """
     #main_layout { layout: vertical; }
-    #now_box { height: auto; padding: 0 1; }
+    #now_box { height: auto; padding: 0 1; border: round $primary; }
     #now_title { width: 1fr; height: 1; text-style: bold; }
     #now_sub { width: 1fr; height: 1; color: $text-muted; }
     #now_status { width: 1fr; height: 1; }
-    #controls { height: 3; margin: 1 0 0 0; }
-    #controls FlatButton { min-width: 5; width: 1fr; margin-right: 1; }
+    #controls { height: auto; margin: 1 0; align: center middle; }
+    #controls IconButton { width: 1fr; }
+    #ctl_toggle { width: 2fr; }
     #queue { height: 1fr; min-height: 4; border: round $primary; }
+    #queue.-b-heavy, #now_box.-b-heavy { border: heavy $primary; }
+    #queue.-b-double, #now_box.-b-double { border: double $primary; }
+    #queue.-b-solid, #now_box.-b-solid { border: solid $primary; }
+    #queue.-b-dashed, #now_box.-b-dashed { border: dashed $primary; }
+    #queue.-b-none, #now_box.-b-none { border: none; }
+    #now_box.-b-round { border: round $primary; }
     #buttons_container { height: 3; }
     #buttons_container Button { margin-right: 1; }
     #log_box { height: 6; min-height: 3; }
+
+    /* мобильная раскладка: .mobile / .classic показываются по классу -mobile на #main_layout */
+    .mobile { display: none; }
+    #main_layout.-mobile .mobile { display: block; }
+    #main_layout.-mobile .classic { display: none; }
+    #main_layout.-mobile #queue { display: none; }
+    #main_layout.-mobile.-queue #queue { display: block; }
+    #m_top { height: 1fr; align: center middle; padding: 0 2; }
+    #main_layout.-queue #m_top { height: auto; }
+    #m_title { width: 100%; height: auto; text-align: center; text-style: bold; }
+    #m_artist { width: 100%; height: auto; text-align: center; color: $text-muted; }
+    #m_bottom { height: auto; padding: 0 1; }
+    #m_times { height: 1; }
+    #m_pos { width: 1fr; }
+    #m_rem { width: 1fr; text-align: right; }
+    #m_controls { height: auto; margin: 1 0; align: center middle; }
+    #m_toggle { width: 2fr; }
+    #m_status { width: 100%; height: 1; text-align: center; color: $text-muted; }
+    #m_buttons { height: 3; margin-top: 1; }
+    #m_buttons FlatButton { min-width: 5; width: 1fr; margin-right: 1; }
+    #m_log { width: 100%; height: 1; text-align: center; color: $text-muted; }
     """
 
     def __init__(self, targets: list[str] | None = None) -> None:
@@ -130,12 +196,25 @@ class FiptApp(App):
         self._pending_highlight: int | None = None
         self._resume_index = 0
         self._quitting = False
-        self._shuffled = False
+        self._mpris = MprisService(self, on_error=self._on_mpris_error)
+        self._shuffled_flag = False
         self._queue_names: list[str] = []
         self.tag_names: dict[str, str] = {}      # путь -> «Исполнитель — Название» из тегов ('' = тегов нет)
         self._tag_pending: set[str] = set()
+        self._icon_sig: dict[str, tuple] = {}
+        self._xf86_listener = XF86MediaKeys(self._on_xf86_action, self._on_xf86_error)
 
     # ───────────────────────── вспомогательное ─────────────────────────
+    @property
+    def _shuffled(self) -> bool:
+        return self._shuffled_flag
+
+    @_shuffled.setter
+    def _shuffled(self, value: bool) -> None:
+        if value != self._shuffled_flag:
+            self._shuffled_flag = value
+            self._mpris.schedule_flush()          # Shuffle виден снаружи через MPRIS
+
     @property
     def music_dir(self) -> str:
         return os.path.expanduser(self.settings["music_dir"])
@@ -144,7 +223,16 @@ class FiptApp(App):
         return tr(self.lang, key, **kw)
 
     def _log(self, key: str, **kw) -> None:
-        self.log_box.write(self._t(key, **kw))
+        text = self._t(key, **kw)
+        self.log_box.write(text)
+        # в мобильной раскладке журнала нет — последнее сообщение показываем одной строкой внизу
+        short = " · ".join(ln.strip() for ln in text.strip().splitlines() if ln.strip())
+        if short.startswith("[") and short.endswith("]"):
+            short = short[1:-1]
+        try:
+            self.query_one("#m_log", Label).update(Text(short))
+        except Exception:  # noqa: BLE001
+            pass
 
     def _persist_settings(self) -> None:
         err = save_settings(self.settings)
@@ -183,20 +271,40 @@ class FiptApp(App):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Vertical(id="main_layout"):
-            with Vertical(id="now_box"):
+            # ── классическая раскладка ──
+            with Vertical(id="now_box", classes="classic"):
                 yield Label("", id="now_title", markup=False)
                 yield Label("", id="now_sub", markup=False)
                 yield SeekBar(id="seek")
                 yield Label("", id="now_status", markup=False)
-            with Horizontal(id="controls"):
-                for cid, label, _action, _tip in CONTROLS:
-                    yield FlatButton(label, id=cid)
-            yield OptionList(id="queue")
-            with Horizontal(id="buttons_container"):
+            with Horizontal(id="controls", classes="classic"):
+                for cid, action, _icon, _size, _tip in CONTROLS:
+                    yield IconButton(action, id=cid)
+            # ── мобильная: название и исполнитель по центру ──
+            with Vertical(id="m_top", classes="mobile"):
+                yield Label("", id="m_title", markup=False)
+                yield Label("", id="m_artist", markup=False)
+            yield OptionList(id="queue")          # общая очередь (в мобильной — по клавише L)
+            # ── мобильная: полоса, время, кнопки ──
+            with Vertical(id="m_bottom", classes="mobile"):
+                yield SeekBar(id="m_seek")
+                with Horizontal(id="m_times"):
+                    yield Label("", id="m_pos", markup=False)
+                    yield Label("", id="m_rem", markup=False)
+                with Horizontal(id="m_controls"):
+                    for cid, action, _icon, _size in MOBILE_ICONS:
+                        yield IconButton(action, id=cid)
+                yield Label("", id="m_status", markup=False)
+                with Horizontal(id="m_buttons"):
+                    for bid, label, _action, _tip in MOBILE_BUTTONS:
+                        yield FlatButton(label, id=bid)
+                yield Label("", id="m_log", markup=False)
+            # ── классическая: нижние кнопки и журнал ──
+            with Horizontal(id="buttons_container", classes="classic"):
                 yield Button(self._t("btn_library"), variant="primary", id="open_library_btn")
                 yield Button(self._t("btn_terminal"), variant="default", id="terminal_btn")
                 yield Button(self._t("btn_settings"), variant="default", id="settings_btn")
-            self.log_box = RichLog(wrap=True, id="log_box")
+            self.log_box = RichLog(wrap=True, id="log_box", classes="classic")
             yield self.log_box
         try:
             footer = Footer(show_command_palette=False)
@@ -213,14 +321,20 @@ class FiptApp(App):
         self.query_one("#queue", OptionList).focus()
         self.set_interval(0.25, self._tick)
 
+        if self.settings.get("mpris", True):
+            self.run_worker(self._start_mpris(quiet=True), exclusive=False)
         if not await self._start_player():
             return
         if self._cli_targets:
             await self._load_cli_targets()
         elif self.settings.get("remember_queue", True):
             await self._restore_queue()
+        if self.settings.get("xf86_media_keys", True):
+            self._xf86_listener.start()
 
     async def on_unmount(self) -> None:
+        self._xf86_listener.stop()
+        await self._mpris.stop()
         await self.player.stop()
 
     def _apply_ui_settings(self) -> None:
@@ -228,15 +342,51 @@ class FiptApp(App):
             self.log_box.display = bool(self.settings.get("show_log", True))
         except Exception:  # noqa: BLE001
             pass
+        self._apply_layout()
+        self._apply_borders()
+        for wid in ("#seek", "#m_seek"):                 # стиль полосы мог смениться
+            try:
+                self.query_one(wid).refresh()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _apply_borders(self) -> None:
+        """Стиль рамок очереди и блока «сейчас играет» — классом, чтобы цвет брался из темы."""
+        style = self.settings.get("queue_border", "round")
+        for wid in ("#queue", "#now_box"):
+            try:
+                widget = self.query_one(wid)
+                for name in CHOICES["queue_border"]:
+                    widget.set_class(name == style, f"-b-{name}")
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _apply_layout(self) -> None:
+        """Включает/выключает мобильную раскладку и заставляет иконки перерисоваться."""
+        mobile = self.settings.get("layout", "mobile") == "mobile"
+        try:
+            main = self.query_one("#main_layout")
+            main.set_class(mobile, "-mobile")
+            if not mobile:
+                main.set_class(False, "-queue")
+        except Exception:  # noqa: BLE001
+            pass
+        self._icon_sig.clear()
+        self._view_dirty = True
 
     def _refresh_static_labels(self) -> None:
         self.title = self._t("app_title")
         self.query_one("#open_library_btn", Button).label = self._t("btn_library")
         self.query_one("#terminal_btn", Button).label = self._t("btn_terminal")
         self.query_one("#settings_btn", Button).label = self._t("btn_settings")
-        for cid, _label, _action, tip in CONTROLS:
+        for cid, _action, _icon, _size, tip in CONTROLS:
             try:
-                self.query_one(f"#{cid}", FlatButton).tooltip = self._t(tip)
+                self.query_one(f"#{cid}", IconButton).tooltip = self._t(tip)
+            except Exception:  # noqa: BLE001
+                pass
+        for bid, _label, _action, tip in MOBILE_BUTTONS:
+            try:
+                self.query_one(f"#{bid}", FlatButton).tooltip = self._t(tip)
             except Exception:  # noqa: BLE001
                 pass
         self._view_dirty = True
@@ -325,6 +475,7 @@ class FiptApp(App):
         return False
 
     def _on_property(self, name: str, data) -> None:
+        self._mpris.on_property(name)
         if name in ("playlist", "playlist-pos"):
             self._queue_dirty = True
         elif name == "metadata":
@@ -340,12 +491,14 @@ class FiptApp(App):
             self._queue_dirty = True
 
     def _on_event(self, event: dict) -> None:
+        self._mpris.on_event(event)
         desc = describe_end_file(event)
         if desc:
             key, detail = desc
             self._log(key, detail=detail)
 
     def _on_player_exit(self) -> None:
+        self._mpris.schedule_flush()
         if not self._quitting:
             self._log("log_mpv_died")
             self._view_dirty = self._queue_dirty = True
@@ -383,50 +536,98 @@ class FiptApp(App):
             self._view_dirty = False
             self._refresh_view()
 
+    def _set_icon(self, wid: str, name: str, size: str, state: str = "normal") -> None:
+        """Ставит иконку на кнопку, только если она реально изменилась."""
+        style = self.settings.get("icons", "text")
+        sig = (name, size, state, style)
+        if self._icon_sig.get(wid) != sig:
+            self._icon_sig[wid] = sig
+            self.query_one(wid).set_icon(get_icon(name, style, size), state)
+
     def _refresh_view(self) -> None:
         p = self.player.props
+        running = self.player.running
         idle = self._is_idle()
-        title_lbl = self.query_one("#now_title", Label)
-        sub_lbl = self.query_one("#now_sub", Label)
-        status = self.query_one("#now_status", Label)
-        seek = self.query_one("#seek", SeekBar)
+        paused = bool(p.get("pause"))
+        pos, dur = p.get("time-pos"), p.get("duration")
+        mode = repeat_mode(p.get("loop-file"), p.get("loop-playlist"))
+        playing_now = running and not idle
+        artist = album = ""
 
-        if not self.player.running:
-            title_lbl.update(Text(self._t("now_player_down")))
-            sub_lbl.update(Text(""))
-            seek.set_progress(None, None)
-            status.update(Text(""))
-            return
-        if idle:
-            title_lbl.update(Text(self._t("now_stopped" if self._queue_entries() else "now_idle")))
-            sub_lbl.update(Text(""))
-            seek.set_progress(None, None)
+        if not running:
+            head = main = self._t("now_player_down")
+            pos = dur = None
+        elif idle:
+            head = main = self._t("now_stopped" if self._queue_entries() else "now_idle")
+            pos = dur = None
             self.sub_title = ""
         else:
-            title, album = media.now_playing_text(p.get("media-title") or "", p.get("metadata"))
-            icon = "❚❚" if p.get("pause") else "▶"
-            title_lbl.update(Text(f"{icon} {title}"))
-            sub_lbl.update(Text(album))
-            seek.set_progress(p.get("time-pos"), p.get("duration"))
-            self.sub_title = title
+            main, artist, album = media.split_now_playing(p.get("media-title") or "", p.get("metadata"))
+            full = f"{artist} — {main}" if artist and main else main
+            head = f"{'❚❚' if paused else '▶'} {full}"
+            self.sub_title = full
 
         vol = p.get("volume")
         vol_txt = f"{int(round(vol))}%" if isinstance(vol, (int, float)) else "--"
         speed = p.get("speed")
-        mode = repeat_mode(p.get("loop-file"), p.get("loop-playlist"))
-        parts = [
-            f"{media.format_time(p.get('time-pos'))} / {media.format_time(p.get('duration'))}",
-            ("🔇 " if p.get("mute") else "🔊 ") + vol_txt,
-            f"x{speed:g}" if isinstance(speed, (int, float)) else "x1",
-            "↻ " + self._t(f"repeat_{mode}"),
-        ]
-        if self._shuffled:
-            parts.append("⇄ " + self._t("shuffle_on"))
-        pos = p.get("playlist-pos")
+        qpos = p.get("playlist-pos")
         n = len(self._queue_entries())
-        if n and isinstance(pos, int) and pos >= 0:
-            parts.append(f"{pos + 1}/{n}")
-        status.update(Text("  │  ".join(parts)))
+        index_txt = f"{qpos + 1}/{n}" if n and isinstance(qpos, int) and qpos >= 0 else ""
+
+        # ── классическая раскладка ──
+        self.query_one("#now_title", Label).update(Text(head))
+        self.query_one("#now_sub", Label).update(Text(album))
+        self.query_one("#seek", SeekBar).set_progress(pos, dur)
+        if running:
+            parts = [
+                f"{media.format_time(p.get('time-pos'))} / {media.format_time(p.get('duration'))}",
+                ("🔇 " if p.get("mute") else "🔊 ") + vol_txt,
+                f"x{speed:g}" if isinstance(speed, (int, float)) else "x1",
+                "↻ " + self._t(f"repeat_{mode}"),
+            ]
+            if self._shuffled:
+                parts.append("⇄ " + self._t("shuffle_on"))
+            if index_txt:
+                parts.append(index_txt)
+            classic_status = "  │  ".join(parts)
+        else:
+            classic_status = ""
+        self.query_one("#now_status", Label).update(Text(classic_status))
+
+        # ── мобильная раскладка ──
+        self.query_one("#m_title", Label).update(Text(main))
+        self.query_one("#m_artist", Label).update(Text(artist or album))
+        self.query_one("#m_seek", SeekBar).set_progress(pos, dur)
+        have_time = isinstance(pos, (int, float)) and isinstance(dur, (int, float))
+        self.query_one("#m_pos", Label).update(Text(media.format_time(pos) if have_time else "0:00"))
+        self.query_one("#m_rem", Label).update(
+            Text("-" + media.format_time(max(dur - pos, 0)) if have_time else "--:--"))
+        m_parts = [("🔇 " if p.get("mute") else "🔊 ") + vol_txt] if running else []
+        if isinstance(speed, (int, float)) and speed != 1:
+            m_parts.append(f"x{speed:g}")
+        if mode != "off":
+            m_parts.append("↻ " + self._t(f"repeat_{mode}"))
+        if index_txt:
+            m_parts.append(index_txt)
+        self.query_one("#m_status", Label).update(Text("  ·  ".join(m_parts)))
+
+        # ── иконки классической панели ──
+        toggle_icon = "pause" if playing_now and not paused else "play"
+        for cid, _action, icon, size, _tip in CONTROLS:
+            state = "normal"
+            if cid == "ctl_shuffle":
+                state = "active" if self._shuffled else "dim"
+            elif cid == "ctl_repeat":
+                state = "active" if mode != "off" else "dim"
+            elif cid == "ctl_toggle":
+                icon = toggle_icon
+            self._set_icon(f"#{cid}", icon, size, state)
+
+        self._set_icon("#m_shuffle", "shuffle", "s", "active" if self._shuffled else "dim")
+        self._set_icon("#m_prev", "prev", "s")
+        self._set_icon("#m_toggle", "pause" if playing_now and not paused else "play", "l")
+        self._set_icon("#m_next", "next", "s")
+        self._set_icon("#m_repeat", "repeat", "s", "active" if mode != "off" else "dim")
 
     @staticmethod
     def _queue_prompt(index: int, name: str, playing: bool) -> Text:
@@ -500,6 +701,114 @@ class FiptApp(App):
             self._queue_dirty = True          # строки обновятся порциями, без мигания всего списка
 
     # ───────────────────────── управление воспроизведением ─────────────────────────
+    def _on_xf86_error(self, message: str) -> None:
+        try:
+            self.call_from_thread(self._log_external_message, message)
+        except Exception:
+            pass
+
+    def _log_external_message(self, message: str) -> None:
+        self.log_box.write(message)
+        self.notify(message, title="XF86Audio", severity="warning", timeout=8)
+
+    def _on_xf86_action(self, action: str) -> None:
+        try:
+            self.call_from_thread(self._dispatch_xf86_action, action)
+        except Exception:
+            pass
+
+    def _dispatch_xf86_action(self, action: str) -> None:
+        actions = {
+            "toggle": self.action_toggle_pause, "stop": self.action_stop,
+            "next": self.action_next, "prev": self.action_prev,
+            "volume_up": lambda: self.action_volume(1),
+            "volume_down": lambda: self.action_volume(-1), "mute": self.action_mute,
+        }
+        callback = actions.get(action)
+        if callback:
+            result = callback()
+            if asyncio.iscoroutine(result):
+                self.run_worker(result, group="xf86-media-keys", exclusive=False)
+
+    async def action_stop(self) -> None:
+        """Остановка воспроизведения. Очередь остаётся, Пауза/Space продолжит с этого же трека."""
+        pos = self.player.props.get("playlist-pos")
+        if isinstance(pos, int) and pos >= 0:
+            self._resume_index = pos
+        await self._cmd("stop", "keep-playlist", quiet=True)
+
+    # ───────────────────────── MPRIS (управление снаружи) ─────────────────────────
+    async def _start_mpris(self, quiet: bool) -> None:
+        ok = await self._mpris.start()
+        if not ok and not quiet:
+            self.notify(self._t("log_mpris_failed"), title="MPRIS", severity="warning", timeout=8)
+
+    def _on_mpris_error(self, message: str) -> None:
+        try:
+            self.log_box.write(message)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def mpris_view(self) -> PlayerView:
+        return PlayerView.from_props(self.player.props, self._queue_entries(), self._shuffled, self.player.running)
+
+    async def mpris_play(self) -> None:
+        view = self.mpris_view()
+        if view.idle:
+            if view.queue_len:
+                await self.action_toggle_pause()      # из простоя стартует с запомненного трека
+        elif view.paused:
+            await self._cmd("set_property", "pause", False, quiet=True)
+
+    async def mpris_pause(self) -> None:
+        view = self.mpris_view()
+        if not view.idle and not view.paused:
+            await self._cmd("set_property", "pause", True, quiet=True)
+
+    async def mpris_play_pause(self) -> None:
+        view = self.mpris_view()
+        if view.running and (not view.idle or view.queue_len):
+            await self.action_toggle_pause()
+
+    async def mpris_stop(self) -> None:
+        await self.action_stop()
+
+    async def mpris_next(self) -> None:
+        if self.mpris_view().can_next:
+            await self.action_next()
+
+    async def mpris_previous(self) -> None:
+        if self.mpris_view().can_previous:
+            await self.action_prev()
+
+    async def mpris_seek(self, seconds: float, absolute: bool) -> None:
+        await self._cmd("seek", seconds, "absolute" if absolute else "relative", quiet=True)
+
+    async def mpris_set_volume(self, percent: float) -> None:
+        lo, hi = INT_LIMITS["volume"]
+        await self._cmd("set_property", "volume", max(lo, min(hi, percent)), quiet=True)
+
+    async def mpris_set_rate(self, rate: float) -> None:
+        await self._cmd("set_property", "speed", rate, quiet=True)
+
+    async def mpris_set_repeat(self, mode: str) -> None:
+        await self.action_set_repeat(mode)
+
+    async def mpris_set_shuffle(self, on: bool) -> None:
+        if on != self._shuffled:
+            await self.action_shuffle()
+
+    async def mpris_open(self, target: str) -> None:
+        """OpenUri: добавляет в конец очереди и сразу играет (очередь пользователя не затирается)."""
+        before = len(self._queue_entries())
+        if not await self._guard(self.player.append([target])):
+            return
+        await self._cmd("set_property", "playlist-pos", before, quiet=True)
+        await self._cmd("set_property", "pause", False, quiet=True)
+
+    async def mpris_quit(self) -> None:
+        await self.action_quit()
+
     async def action_toggle_pause(self) -> None:
         if not self.player.running:
             self._log("log_player_down")
@@ -550,6 +859,28 @@ class FiptApp(App):
             except MpvError:
                 self._log("log_unshuffle_failed")
         self._view_dirty = True
+
+    def action_toggle_queue(self) -> None:
+        """Мобильная раскладка: показать/скрыть очередь. В классической очередь всегда на экране."""
+        if len(self.screen_stack) > 1:
+            return
+        queue = self.query_one("#queue", OptionList)
+        if self.settings.get("layout", "mobile") != "mobile":
+            queue.focus()
+            return
+        main = self.query_one("#main_layout")
+        show = not main.has_class("-queue")
+        main.set_class(show, "-queue")
+        if show:
+            self._queue_dirty = True
+            queue.focus()
+
+    def action_cycle_layout(self) -> None:
+        self.apply_changes({"layout": "classic" if self.settings.get("layout", "mobile") == "mobile" else "mobile"})
+
+    async def on_icon_button_pressed(self, event: IconButton.Pressed) -> None:
+        event.stop()
+        await self.run_action(event.action)
 
     async def action_cycle_repeat(self) -> None:
         p = self.player.props
@@ -722,14 +1053,37 @@ class FiptApp(App):
             return
         self.action_command_palette()
 
-    def _retranslate_bindings(self) -> None:
+    def _rebuild_bindings(self) -> None:
+        """Применяет язык подписей и клавиши из настроек к уже запущенному приложению.
+
+        Трогаем только действия fipt (MANAGED_ACTIONS): встроенные клавиши Textual
+        (палитра команд Ctrl+P, Ctrl+C) остаются на месте.
+        """
         try:
-            for binding in make_bindings(self.lang):
-                if binding.show:
-                    self._bindings.key_to_bindings[binding.key] = [binding]
+            table = self._bindings.key_to_bindings
+            for key in list(table):
+                kept = [b for b in table[key] if b.action not in MANAGED_ACTIONS]
+                if kept:
+                    table[key] = kept
+                else:
+                    del table[key]
+            for binding in make_bindings(self.lang, self.settings.get("keybindings")):
+                table.setdefault(binding.key, []).append(binding)
             self.refresh_bindings()
+        except Exception as exc:  # noqa: BLE001 — не роняем приложение, но и не молчим
+            self._warn_keys_failed(exc)
+
+    def _warn_keys_failed(self, exc: Exception) -> None:
+        text = f"{type(exc).__name__}: {exc}".replace("[", "(").replace("]", ")")     # скобки ломают разметку
+        try:
+            self.log_box.write("keybindings: " + text)
+            self.notify(self._t("log_keys_failed", err=text), severity="error", timeout=8)
         except Exception:  # noqa: BLE001
             pass
+
+    def action_open_keybindings(self) -> None:
+        self.push_screen(KeybindingsScreen(self.lang, self.settings),
+                         lambda result: self.apply_changes(result) if result else None)
 
     def apply_changes(self, changes: dict) -> None:
         old = dict(self.settings)
@@ -738,8 +1092,8 @@ class FiptApp(App):
         self._persist_settings()
         if "theme" in changes:
             self.apply_theme(self.settings["theme"])
-        if self.lang != old["language"]:
-            self._retranslate_bindings()
+        if self.lang != old["language"] or "keybindings" in changes:
+            self._rebuild_bindings()
         self._apply_ui_settings()
         self._refresh_static_labels()
         self._queue_dirty = True
@@ -756,6 +1110,16 @@ class FiptApp(App):
             return
         if "video" in changed:
             await self._cmd("set_property", "vid", "no" if self.settings["video"] == "off" else "auto", quiet=True)
+        if "xf86_media_keys" in changed:
+            if self.settings["xf86_media_keys"]:
+                self._xf86_listener.start()
+            else:
+                self._xf86_listener.stop()
+        if "mpris" in changed:
+            if self.settings["mpris"]:
+                await self._start_mpris(quiet=False)
+            else:
+                await self._mpris.stop()
         if "replaygain" in changed:
             await self._cmd("set_property", "replaygain", self.settings["replaygain"], quiet=True)
 
@@ -860,8 +1224,8 @@ class FiptApp(App):
     # ───────────────────────── кнопки и выход ─────────────────────────
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id or ""
-        if bid in CONTROL_ACTIONS:
-            await self.run_action(CONTROL_ACTIONS[bid])
+        if bid in MOBILE_BUTTON_ACTIONS:
+            await self.run_action(MOBILE_BUTTON_ACTIONS[bid])
         elif bid == "open_library_btn":
             self.action_open_library()
         elif bid == "terminal_btn":

@@ -1,4 +1,3 @@
-
 ![License](https://img.shields.io/badge/license-GPLv3-blue)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20termux%20(Android)-green)
 
@@ -20,6 +19,8 @@ fipt (fuck-it-player-tui) is a terminal music player built on top of [mpv](https
 
 ## FEATURES
 
+- Minimal mobile layout (title, artist, progress bar with time, big icon buttons) and the classic one; switch with `F3`
+- Button icons drawn with terminal graphics (braille dots) from SVG sources; plain symbols as a fallback
 - Queue with track names taken from tags (`Artist — Title`), not file names; broken ID3 encodings (UTF-8 / cp1251 written as Latin-1) are repaired automatically
 - Library browser, folders are queued in natural order (`track2` before `track10`); links (YouTube and others via `yt-dlp`) work too
 - Repeat (off / track / queue), random order on / off, speed, ReplayGain, audio track and subtitle selection
@@ -31,7 +32,7 @@ fipt (fuck-it-player-tui) is a terminal music player built on top of [mpv](https
 
 ## REQUIREMENTS
 
-Python 3.10+, [mpv](https://mpv.io) (0.38+ recommended: older versions can't restore the order after random mode), and the Textual library. Optional: `mutagen` (track names from tags) and `yt-dlp` (YouTube and other links). Linux, Termux.
+Python 3.10+, [mpv](https://mpv.io) (0.38+ recommended: older versions can't restore the order after random mode), and the Textual library. Optional: `mutagen` (track names from tags) and `yt-dlp` (YouTube and other links). Linux, Termux. For the graphic icons the terminal font needs Braille glyphs (most have them); otherwise switch to plain symbols in the settings.
 
 ## Instructions for Termux
 
@@ -65,10 +66,10 @@ bash install.sh
 
 The script will ask you to select a language (English / Русский / Українська), then:
 
-· Check Python, Textual, mpv, and tell you what is missing (nothing is installed behind your back).
-· Copy the project to $PREFIX/share/fipt in Termux, /usr/local/share/fipt as root, or ~/.local/share/fipt otherwise.
-· Create the fipt command next to it (bin/fipt) that runs the installed copy.
-· Write the chosen language to the settings if there are none yet (existing settings are never overwritten).
+· Check Python, Textual, mpv, and tell you what is missing (nothing is installed behind your back).  
+· Copy the project to $PREFIX/share/fipt in Termux, /usr/local/share/fipt as root, or ~/.local/share/fipt otherwise.  
+· Create the fipt command next to it (bin/fipt) that runs the installed copy.  
+· Write the chosen language to the settings if there are none yet (existing settings are never overwritten).  
 
 After installation you can run the player from anywhere:
 
@@ -110,7 +111,7 @@ git clone https://github.com/papa-mux/fipt.git
 cd fipt
 ```
 
-Then run fipt with that environment's python, or run the installer as root (files go to /usr/local/share/fipt and bin/fipt):
+Then run the installer as root (files go to /usr/local/share/fipt and bin/fipt):
 
 ```bash
 sudo bash install.sh
@@ -129,26 +130,36 @@ fipt song.mp3 ~/Music https://youtu.be/...
 
 Hotkeys
 
-Key Action
-Space Play / pause (on an empty player — start the queue)
-← → Seek (step is configurable)
-N / P Next / previous track
-+ − · M Volume · mute
-R Repeat: off → track → queue
-X Random order on / off (off restores the original order, mpv ≥ 0.38)
-[ ] · \ Speed down / up · reset
-Enter Play the selected track
-Del · Shift+↑/↓ (or K/J) · C Remove · move in the queue · clear the queue
-O · U Library · open a link / path
-T Audio tracks and subtitles
-V Play in the terminal (--vo=tct/kitty/sixel), q returns
-F2 · Q Settings · quit
+| Key | Action |
+|---|---|
+| `Space` | Play / pause (on an empty player — start the queue) |
+| `←` `→` | Seek (step is configurable) |
+| `N` / `P` | Next / previous track |
+| `+` `−` · `M` | Volume · mute |
+| `R` | Repeat: off → track → queue |
+| `X` | Random order on / off (off restores the original order, mpv ≥ 0.38) |
+| `[` `]` · `\` | Speed down / up · reset |
+| `Enter` | Play the selected track |
+| `Del` · `Shift+↑/↓` (or `K`/`J`) · `C` | Remove · move in the queue · clear the queue |
+| `L` | Show / hide the queue (mobile layout) |
+| `O` · `U` | Library · open a link / path |
+| `T` | Audio tracks and subtitles |
+| `V` | Play in the terminal (`--vo=tct/kitty/sixel`), `q` returns |
+| `F2` · `F3` · `Q` | Settings · switch layout (mobile / classic) · quit |
 
-The footer shows the main keys; F2 opens the settings (appearance and themes, playback, language, mpv and folders). Mouse: click the progress bar, buttons and queue rows.
+The footer shows the main keys; `F2` opens the settings (appearance and themes, playback, language, mpv and folders). Mouse: click the progress bar, buttons and queue rows.
+
+Layouts and icons
+
+**Mobile** (default): title and artist in the centre, a progress bar with elapsed and remaining time, a row of icon buttons (shuffle, previous, play / pause, next, repeat) and a small row `−` `+` `≡` `♫` `⚙` (volume, queue, library, settings). The queue is hidden and opens with `L` or `≡`; the last message is shown in one line at the bottom. **Classic**: the previous screen with the queue and the message log.
+
+Switch the layout with `F3`, from the `F2` palette, or in F2 → Appearance and themes, where you can also choose the icon style: graphic (braille dots) or plain symbols (if your font draws the graphics badly).
+
+The icons come from `assets/icons/*.svg` and are converted once into `fiptui/icons.py`; users need nothing extra. If you edit the SVG files, regenerate with `python3 tools/make_icons.py` (needs Pillow, only for developers). Supported shapes: polygon, polyline, line, rect, circle.
 
 Settings
 
-Main options: video (window / off), replaygain, titles_from_tags, play_folder (queue the whole folder when you start a file), ytdl, remember_queue, remember_volume, seek_step, volume_step, mpv_path, mpv_args, music_dir.
+Main options: `layout` (`mobile` / `classic`), `icons` (`braille` / `text`), `video` (`window` / `off`), `replaygain`, `titles_from_tags`, `play_folder` (queue the whole folder when you start a file), `ytdl`, `remember_queue`, `remember_volume`, `seek_step`, `volume_step`, `mpv_path`, `mpv_args`, `music_dir`.
 
 Tests
 
@@ -156,19 +167,22 @@ Tests
 python3 tests/run_all.py
 ```
 
-Textual and mpv are not needed for the tests: the mpv protocol is checked against a fake mpv (tests/fake_mpv.py), the application logic against a Textual stub, tags against a fake mutagen.
+Textual and mpv are **not** needed for the tests: the mpv protocol is checked against a fake mpv (`tests/fake_mpv.py`), the application logic against a Textual stub, tags against a fake `mutagen`. The generated `icons.py` is checked against the SVG sources (needs Pillow, otherwise skipped).
 
-What the tests do not cover: drawing and key handling in real Textual, behaviour of a real mpv and a real mutagen, --vo=tct in your terminal. If something breaks, open an issue with the traceback and the output of mpv --version.
+What the tests do **not** cover: drawing and key handling in real Textual, behaviour of a real mpv and a real mutagen, `--vo=tct` in your terminal. If something breaks, open an issue with the traceback and the output of `mpv --version`.
 
 How it works
 
-File Purpose
-fiptui/mpv.py mpv process and asynchronous JSON IPC client (no UI)
-fiptui/media.py, tags.py library, natural sorting, time formatting, tags, mojibake repair
-fiptui/app.py main screen, queue, hotkeys, state saving
-fiptui/screens/ library, tracks, settings windows, theme editor
-fiptui/settings.py, themes.py, i18n.py, commands.py settings, themes, localization, F2 palette
-data/, locales/, themes/ defaults, translations (en / ru / ua), built-in themes
+| File | Purpose |
+|---|---|
+| `fiptui/mpv.py` | mpv process and asynchronous JSON IPC client (no UI) |
+| `fiptui/media.py`, `tags.py` | library, natural sorting, time formatting, tags, mojibake repair |
+| `fiptui/app.py` | main screen, both layouts, queue, hotkeys, state saving |
+| `fiptui/widgets.py`, `iconset.py`, `icons.py` | progress bar, icon buttons, braille icons (`icons.py` is generated) |
+| `fiptui/screens/` | library, tracks, settings windows, theme editor |
+| `fiptui/settings.py`, `themes.py`, `i18n.py`, `commands.py` | settings, themes, localization, `F2` palette |
+| `assets/icons/`, `tools/make_icons.py` | SVG icon sources and the generator |
+| `data/`, `locales/`, `themes/` | defaults, translations (en / ru / ua), built-in themes |
 
 ---
 
@@ -196,21 +210,21 @@ Uninstall
 bash install.sh --uninstall
 ```
 
-Your settings in ~/.config/fipt are kept; delete that folder by hand if you want to.
+Your settings in `~/.config/fipt` are kept; delete that folder by hand if you want to.
 
 ---
 
 Credits
 
-· [abc-pascal-tui](https://github.com/kuzmak161-creator/abc-pascal-tui) — fipt is a direct fork of this project; the architecture, settings, themes, i18n, command palette and modal screens are taken from there.
- · mpv — playback engine, a separate program under its own license (GPL / LGPL).
-· Textual — the TUI framework the interface is built on.
-· mutagen and yt-dlp — optional dependencies for tags and links.
+· [abc-pascal-tui](https://github.com/kuzmak161-creator/abc-pascal-tui) — fipt is a direct fork of this project; the architecture, settings, themes, i18n, command palette and modal screens are taken from there.  
+· [mpv](https://mpv.io) — playback engine, a separate program under its own license (GPL / LGPL).  
+· [Textual](https://github.com/Textualize/textual) — the TUI framework the interface is built on.  
+· [mutagen](https://github.com/quodlibet/mutagen) and [yt-dlp](https://github.com/yt-dlp/yt-dlp) — optional dependencies for tags and links.  
+· [Feather](https://feathericons.com) — the button icons are based on Feather icons (MIT).  
 
 ---
 
 License
 
-· fipt — GNU General Public License v3.0 (GPL v3), see LICENSE.
-· mpv — a separate program under its own license (GPL / LGPL).
-
+· fipt — GNU General Public License v3.0 (GPL v3), see `LICENSE`.  
+· mpv — a separate program under its own license (GPL / LGPL).  

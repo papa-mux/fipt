@@ -9,7 +9,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from fiptui import i18n, media, queue_store, settings, tags, themes  # noqa: E402
+from fiptui import i18n, iconset, media, queue_store, settings, tags, themes  # noqa: E402
 
 
 def _write(path: str, text: str) -> None:
@@ -181,6 +181,53 @@ class ThemeTests(unittest.TestCase):
         self.assertEqual(themes.validate_theme({"name": "x", "primary": "#fff"})["primary"], "#ffffff")
 
 
+class IconTests(unittest.TestCase):
+    NAMES = ("shuffle", "prev", "play", "pause", "next", "repeat")
+
+    def test_all_icons_present_and_uniform(self):
+        for name in self.NAMES:
+            for size, (rows, cols) in {"s": (3, 6), "l": (4, 8)}.items():
+                lines = iconset.get_icon(name, "braille", size)
+                self.assertEqual(len(lines), rows, (name, size))
+                self.assertEqual({len(r) for r in lines}, {cols}, (name, size))   # прямоугольник — центрируется ровно
+                self.assertTrue(any(0x2800 < ord(c) <= 0x28FF for r in lines for c in r), (name, size))
+
+    def test_text_fallback_and_unknown(self):
+        self.assertEqual(iconset.get_icon("play", "text"), ("▶",))
+        self.assertEqual(iconset.get_icon("next", "text", "l"), ("▶|",))
+        self.assertEqual(iconset.get_icon("nope", "braille"), ())
+        self.assertEqual(iconset.get_icon("play", "bogus-style"), ("▶",))
+
+    def test_generated_module_matches_svg_sources(self):
+        try:
+            import PIL  # noqa: F401
+        except ImportError:
+            self.skipTest("Pillow не установлен")
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        try:
+            import make_icons
+        finally:
+            sys.path.pop(0)
+        from fiptui.icons import BRAILLE
+        built = make_icons.build()
+        self.assertEqual({k: {s: tuple(v) for s, v in d.items()} for k, d in built.items()}, BRAILLE,
+                         "fiptui/icons.py устарел: запустите python3 tools/make_icons.py")
+
+    def test_every_svg_has_an_icon(self):
+        svg = {f[:-4] for f in os.listdir(os.path.join(ROOT, "assets", "icons")) if f.endswith(".svg")}
+        self.assertTrue(set(self.NAMES) <= svg)
+
+
+class SplitNowPlayingTests(unittest.TestCase):
+    def test_split(self):
+        md = {"ARTIST": "Band", "title": "Song", "album": "LP"}
+        self.assertEqual(media.split_now_playing("file.mp3", md), ("Song", "Band", "LP"))
+        self.assertEqual(media.split_now_playing("file.mp3", None), ("file.mp3", "", ""))
+        self.assertEqual(media.split_now_playing("", {"artist": "A"}), ("", "A", ""))
+        bad = "Кино".encode("utf-8").decode("latin-1")
+        self.assertEqual(media.split_now_playing(bad, None)[0], "Кино")
+
+
 class TagsTests(unittest.TestCase):
     def test_format_name(self):
         self.assertEqual(tags.format_name("Boards of Canada", "Roygbiv"), "Boards of Canada — Roygbiv")
@@ -283,6 +330,29 @@ class LocaleTests(unittest.TestCase):
         self.assertEqual(i18n.tr("xx", "log_added", n=3), "[Added to queue: 3]\n")   # неизвестный язык -> en
         self.assertEqual(i18n.tr("en", "no_such_key"), "no_such_key")
         self.assertEqual(i18n.tr("en", "log_added"), "[Added to queue: {n}]\n")      # нет аргумента — без падения
+
+
+class ThemeCustomizationTests(unittest.TestCase):
+    def test_bundled_fipt_themes_load(self):
+        loaded = themes.load_all()
+        self.assertFalse(loaded["fipt-dark"]["_user"] is True)
+        self.assertTrue(loaded["fipt-dark"]["dark"])
+        self.assertFalse(loaded["fipt-light"]["dark"])
+        self.assertEqual(loaded["fipt-dark"]["primary"], "#b388ff")
+        self.assertNotIn("editor_theme", loaded["fipt-dark"])         # чужой ключ отбрасывается
+
+    def test_extra_colors_are_kept_and_normalized(self):
+        clean = themes.validate_theme({"name": "x", "primary": "#abc", "seek": "F00", "active": "#00ff00", "bogus": "1"})
+        self.assertEqual((clean["seek"], clean["active"]), ("#ff0000", "#00ff00"))
+        self.assertNotIn("bogus", clean)
+        self.assertNotIn("seek", themes.validate_theme({"name": "x", "primary": "#abc", "seek": "nope"}))
+
+    def test_new_choices_sanitized(self):
+        base = dict(settings._MINIMAL)
+        out = settings.sanitize({"seekbar": "block", "queue_border": "heavy"}, base)
+        self.assertEqual((out["seekbar"], out["queue_border"]), ("block", "heavy"))
+        out = settings.sanitize({"seekbar": "neon", "queue_border": "zigzag"}, base)
+        self.assertEqual((out["seekbar"], out["queue_border"]), ("line", "round"))
 
 
 if __name__ == "__main__":

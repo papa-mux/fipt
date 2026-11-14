@@ -77,8 +77,10 @@ def _install_stub() -> None:
 
 _install_stub()
 from fiptui import mpv as M  # noqa: E402
-from fiptui import queue_store, tags  # noqa: E402
-from fiptui.app import FiptApp, CONTROLS, CONTROL_ACTIONS, make_bindings  # noqa: E402
+from fiptui import iconset, queue_store, tags  # noqa: E402
+from fiptui.settings import KEYBINDING_DEFAULTS  # noqa: E402
+from fiptui.app import (  # noqa: E402
+    CONTROLS, CONTROL_ACTIONS, MOBILE_BUTTON_ACTIONS, MOBILE_BUTTONS, MOBILE_ICONS, FiptApp, make_bindings)
 
 
 class FakeMutagen:
@@ -110,6 +112,26 @@ class FakeLabel:
 
     def update(self, x):
         self.text = plain(x)
+
+
+class FakeIcon:
+    def __init__(self):
+        self.lines, self.state, self.sets = (), "normal", 0
+
+    def set_icon(self, lines, state="normal"):
+        self.lines, self.state = tuple(lines), state
+        self.sets += 1
+
+
+class FakeLayout:
+    def __init__(self):
+        self.classes = set()
+
+    def set_class(self, on, name):
+        (self.classes.add if on else self.classes.discard)(name)
+
+    def has_class(self, name):
+        return name in self.classes
 
 
 class FakeSeek:
@@ -157,7 +179,11 @@ class AppUnderTest(FiptApp):
         super().__init__(**kw)
         self.log_box = FakeLog()
         self.widgets = {"#now_title": FakeLabel(), "#now_sub": FakeLabel(), "#now_status": FakeLabel(),
-                        "#seek": FakeSeek(), "#queue": FakeOptions()}
+                        "#seek": FakeSeek(), "#m_seek": FakeSeek(), "#queue": FakeOptions(),
+                        "#main_layout": FakeLayout()}
+        for wid in ("#m_shuffle", "#m_prev", "#m_toggle", "#m_next", "#m_repeat",
+                    *(f"#{c[0]}" for c in CONTROLS)):
+            self.widgets[wid] = FakeIcon()
         self.pushed, self.exited, self.workers = [], False, []
         self.screen_stack = [object()]
         self.title = self.sub_title = ""
@@ -377,6 +403,105 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
         await self.app._handle_library(("play", self.files[1], self.music))
         self.assertFalse(self.app._shuffled)
 
+    # ---- мобильная раскладка и иконки ----
+    def mobile(self, name):
+        return self.app.widgets[name]
+
+    async def test_mobile_is_default_and_applies_class(self):
+        self.assertEqual(self.app.settings["layout"], "mobile")
+        self.app._apply_layout()
+        self.assertIn("-mobile", self.mobile("#main_layout").classes)
+        self.app.apply_changes({"layout": "classic"})
+        self.assertNotIn("-mobile", self.mobile("#main_layout").classes)
+
+    async def test_mobile_texts_and_time(self):
+        await self.play_from(0)
+        self.app.player.props["metadata"] = {"title": "Song", "artist": "Band"}
+        self.app._view_dirty = True
+        self.assertTrue(await self.app.settle(lambda: self.mobile("#m_title").text == "Song"))
+        self.assertEqual(self.mobile("#m_artist").text, "Band")             # исполнитель отдельной строкой
+        self.assertEqual(self.mobile("#m_pos").text, "0:00")
+        self.assertEqual(self.mobile("#m_rem").text, "-2:00")               # оставшееся время со знаком минус
+        self.assertIn("80%", self.mobile("#m_status").text)
+        self.assertIn("1/5", self.mobile("#m_status").text)
+        self.assertEqual(self.mobile("#m_seek").progress, (0.0, 120.0))
+
+    async def test_mobile_idle_state(self):
+        await self.app.settle()
+        self.assertIn("O", self.mobile("#m_title").text)
+        self.assertEqual(self.mobile("#m_rem").text, "--:--")
+        self.assertEqual(self.mobile("#m_toggle").lines, iconset.get_icon("play", "braille", "l"))
+        self.assertEqual(self.mobile("#m_seek").progress, (None, None))
+
+    async def test_icons_follow_state(self):
+        await self.play_from(0)
+        toggle = lambda name: iconset.get_icon(name, "braille", "l")
+        self.assertTrue(await self.app.settle(lambda: self.mobile("#m_toggle").lines == toggle("pause")))
+        self.assertEqual(self.mobile("#m_prev").lines, iconset.get_icon("prev", "braille", "s"))
+        self.assertEqual(self.mobile("#m_shuffle").state, "dim")
+        self.assertEqual(self.mobile("#m_repeat").state, "dim")
+        await self.app.action_toggle_pause()                                 # пауза -> иконка «play»
+        self.assertTrue(await self.app.settle(lambda: self.mobile("#m_toggle").lines == toggle("play")))
+        await self.app.action_shuffle()
+        self.assertTrue(await self.app.settle(lambda: self.mobile("#m_shuffle").state == "active"))
+        await self.app.action_cycle_repeat()
+        self.assertTrue(await self.app.settle(lambda: self.mobile("#m_repeat").state == "active"))
+
+    async def test_icons_not_reset_every_frame(self):
+        await self.play_from(0)
+        await self.app.settle(lambda: False, timeout=0.2)
+        before = self.mobile("#m_next").sets
+        for _ in range(5):
+            self.app._view_dirty = True
+            await self.app._tick()
+        self.assertEqual(self.mobile("#m_next").sets, before)                # без изменений — не перерисовываем
+
+    async def test_text_icons_fallback(self):
+        await self.play_from(0)
+        self.app.apply_changes({"icons": "text"})
+        self.assertTrue(await self.app.settle(lambda: self.mobile("#m_prev").lines == ("|◀",)))
+        self.assertEqual(self.mobile("#m_toggle").lines, ("❚❚",))
+
+    async def test_toggle_queue(self):
+        layout = self.mobile("#main_layout")
+        self.app.action_toggle_queue()
+        self.assertIn("-queue", layout.classes)
+        self.app.action_toggle_queue()
+        self.assertNotIn("-queue", layout.classes)
+        self.app.apply_changes({"layout": "classic"})
+        self.app.action_toggle_queue()                                      # в классической очередь и так видна
+        self.assertNotIn("-queue", layout.classes)
+
+    async def test_cycle_layout_persists(self):
+        self.app.action_cycle_layout()
+        self.assertEqual(self.app.settings["layout"], "classic")
+        self.app.action_cycle_layout()
+        self.assertEqual(self.app.settings["layout"], "mobile")
+        with open(queue_store.paths.SETTINGS_PATH, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["layout"], "mobile")
+
+    async def test_icon_buttons_and_small_buttons_dispatch(self):
+        await self.play_from(0)
+        ev = types.SimpleNamespace(action="next", stop=lambda: None)
+        await self.app.on_icon_button_pressed(ev)
+        self.assertTrue(await self.app.settle(lambda: self.app.player.props["playlist-pos"] == 1))
+        press = lambda bid: types.SimpleNamespace(button=types.SimpleNamespace(id=bid))
+        await self.app.on_button_pressed(press("m_volup"))
+        self.assertTrue(await self.app.settle(lambda: self.app.player.props["volume"] == 85))
+        await self.app.on_button_pressed(press("m_queue"))
+        self.assertIn("-queue", self.mobile("#main_layout").classes)
+        for _bid, _label, action, _tip in MOBILE_BUTTONS:                   # у каждой кнопки есть обработчик
+            self.assertTrue(hasattr(self.app, "action_" + action.split("(")[0]), action)
+        for _cid, action, name, size in MOBILE_ICONS:
+            self.assertTrue(hasattr(self.app, "action_" + action), action)
+            self.assertTrue(iconset.get_icon(name, "braille", size))
+
+    async def test_mobile_log_line(self):
+        self.app._log("log_queue_empty")
+        self.assertEqual(self.mobile("#m_log").text, self.app._t("log_queue_empty").strip()[1:-1])
+        self.app._log("log_paths", mpv="/x/mpv", music="/m", config="/c", sock="/s")
+        self.assertNotIn("\n", self.mobile("#m_log").text)                   # многострочное — в одну строку
+
     # ---- управление ----
     async def test_next_prev_stop_at_edges_quietly(self):
         await self.play_from(0)
@@ -515,6 +640,107 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.app.widgets["#open_library_btn"].label, "📁 Library")
         self.assertEqual(self.app.widgets["#ctl_toggle"].tooltip, "Play / pause (Space)")
 
+    # ---- горячие клавиши ----
+    def test_make_bindings_applies_overrides(self):
+        from fiptui.app import make_bindings
+        by_action = lambda bs: {(b.action, b.key) for b in bs}
+        default = by_action(make_bindings("en"))
+        self.assertIn(("quit", "q"), default)                          # алиас работает, пока клавишу не меняли
+        self.assertIn(("volume(1)", "equals_sign"), default)
+        custom = by_action(make_bindings("en", {"quit": "ctrl+x", "volume(1)": "plus,f9"}))
+        self.assertIn(("quit", "ctrl+x"), custom)
+        self.assertNotIn(("quit", "ctrl+q"), custom)
+        self.assertNotIn(("quit", "q"), custom)                        # после переназначения алиасов нет
+        self.assertTrue({("volume(1)", "plus"), ("volume(1)", "f9")} <= custom)
+        self.assertEqual(make_bindings("en", {"quit": "ctrl+q"})[0].key_display, "^Q")
+
+    async def test_rebuild_bindings_keeps_foreign_bindings(self):
+        from textual.binding import Binding
+        keep = Binding("ctrl+p", "command_palette", "", show=False)
+
+        class Table:
+            key_to_bindings = {"ctrl+p": [keep], "ctrl+q": [Binding("ctrl+q", "quit", "", show=False)],
+                               "plus,equals_sign": [Binding("plus,equals_sign", "volume(1)", "", show=False)]}
+        self.app._bindings = Table
+        self.app.refresh_bindings = lambda: None
+        self.app.settings["keybindings"] = dict(KEYBINDING_DEFAULTS, quit="ctrl+x")
+        self.app._rebuild_bindings()
+        table = Table.key_to_bindings
+        self.assertEqual(table["ctrl+p"], [keep])                      # чужое не тронуто
+        self.assertNotIn("ctrl+q", table)
+        self.assertNotIn("plus,equals_sign", table)                    # составных ключей не остаётся
+        self.assertEqual(table["ctrl+x"][0].action, "quit")
+        self.assertEqual(table["plus"][0].action, "volume(1)")
+        self.assertEqual(table["equals_sign"][0].action, "volume(1)")
+
+    def test_keybindings_screen_validation(self):
+        from fiptui.screens.keybindings import ACTIONS, build_keybindings
+        labels = dict(ACTIONS)
+        values = {a: "" for a in labels}
+        result, err = build_keybindings(values, lambda a: labels[a], "en")
+        self.assertEqual((err, result), ("", KEYBINDING_DEFAULTS))     # пусто = по умолчанию, алиасы сохраняются
+        for bad, text in (("next", "ctrl+"), ("next", "foo+x")):
+            r, err = build_keybindings({**values, bad: text}, lambda a: labels[a], "en")
+            self.assertIsNone(r)
+            self.assertIn(text, err)
+        r, err = build_keybindings({**values, "next": "ctrl+p"}, lambda a: labels[a], "en")
+        self.assertIsNone(r)
+        r, err = build_keybindings({**values, "next": "q"}, lambda a: labels[a], "en")      # q занята алиасом выхода
+        self.assertIsNone(r)
+        self.assertIn("Conflict", err)
+        r, err = build_keybindings({**values, "next": "F5, ы "}, lambda a: labels[a], "en")
+        self.assertEqual(r["next"], "f5,ы")
+
+    def test_keybindings_screen_has_no_shadowed_methods(self):
+        # `_id` у виджета — атрибут Textual; метод с таким именем затирается в __init__ и роняет «Сохранить»
+        import inspect
+        from fiptui.screens.keybindings import KeybindingsScreen
+        for name, member in inspect.getmembers(KeybindingsScreen, inspect.isfunction):
+            self.assertNotIn(name, ("_id", "_classes", "_name", "_parent", "_nodes"), name)
+        self.assertTrue(hasattr(KeybindingsScreen, "action_cancel"))
+
+    def test_every_seekbar_style_is_defined(self):
+        from fiptui.settings import CHOICES
+        from fiptui.widgets import SEEK_STYLES
+        self.assertEqual(set(SEEK_STYLES), set(CHOICES["seekbar"]))
+
+    async def test_border_style_and_classic_icons(self):
+        self.app.apply_changes({"queue_border": "heavy", "seekbar": "block"})      # не должно падать
+        await self.play_from(0)
+        toggle = lambda n: iconset.get_icon(n, "braille", "l")
+        self.assertTrue(await self.app.settle(lambda: self.app.widgets["#ctl_toggle"].lines == toggle("pause")))
+        self.assertEqual(self.app.widgets["#ctl_back"].lines, iconset.get_icon("back", "braille", "s"))
+        self.assertEqual(self.app.widgets["#ctl_shuffle"].state, "dim")
+        await self.app.action_shuffle()
+        self.assertTrue(await self.app.settle(lambda: self.app.widgets["#ctl_shuffle"].state == "active"))
+
+    # ---- MPRIS: действия хоста ----
+    async def test_mpris_view_and_stop_keeps_queue(self):
+        await self.play_from(1)
+        self.assertTrue(await self.app.settle(lambda: self.app.mpris_view().status == "Playing"))
+        n = len(self.app._queue_entries())
+        await self.app.mpris_pause()
+        self.assertTrue(await self.app.settle(lambda: self.app.mpris_view().status == "Paused"))
+        await self.app.mpris_play()
+        self.assertTrue(await self.app.settle(lambda: self.app.mpris_view().status == "Playing"))
+        await self.app.mpris_stop()
+        self.assertTrue(await self.app.settle(lambda: self.app.mpris_view().status == "Stopped"))
+        self.assertEqual(len(self.app._queue_entries()), n)            # Stop не очищает очередь
+        await self.app.mpris_play()                                    # и Play продолжает с того же места
+        self.assertTrue(await self.app.settle(lambda: self.app.mpris_view().status == "Playing"))
+        self.assertEqual(self.app.mpris_view().queue_pos, 1)
+
+    async def test_mpris_volume_shuffle_repeat(self):
+        await self.play_from(0)
+        await self.app.mpris_set_volume(999)
+        self.assertTrue(await self.app.settle(lambda: self.app.player.props.get("volume") == 130))
+        await self.app.mpris_set_repeat("track")
+        self.assertTrue(await self.app.settle(lambda: self.app.mpris_view().repeat == "track"))
+        await self.app.mpris_set_shuffle(True)
+        self.assertTrue(self.app.mpris_view().shuffle)
+        await self.app.mpris_set_shuffle(True)                         # повтор не переключает обратно
+        self.assertTrue(self.app.mpris_view().shuffle)
+
     async def test_mpv_death_is_handled(self):
         await self.play_from(0)
         self.app.player._proc.kill()
@@ -579,7 +805,7 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_bindings_and_controls_consistent(self):
         keys = {b.action for b in make_bindings("en")}
-        for _cid, _label, action, _tip in CONTROLS:
+        for _cid, action, _icon, _size, _tip in CONTROLS:
             self.assertTrue(hasattr(self.app, "action_" + action.split("(")[0]), action)
         self.assertEqual(len(CONTROL_ACTIONS), len(CONTROLS))
         for b in make_bindings("en"):                                  # у каждой привязки есть обработчик

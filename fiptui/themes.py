@@ -8,6 +8,9 @@ from .jsonio import read_json, write_json_atomic
 
 COLOR_KEYS = ("primary", "secondary", "accent", "background", "surface", "panel", "foreground")
 OPTIONAL_COLOR_KEYS = ("warning", "error", "success")
+# Цвета самого fipt (не часть темы Textual): полоса перемотки и «включённые» иконки. По умолчанию — primary.
+EXTRA_COLOR_KEYS = ("seek", "active")
+EDITOR_KEYS = COLOR_KEYS + EXTRA_COLOR_KEYS
 
 _HEX_RE = re.compile(r"#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})")
 
@@ -43,7 +46,7 @@ def validate_theme(data) -> dict | None:
         "name": name,
         "dark": bool(data.get("dark", True)),
     }
-    for key in COLOR_KEYS + OPTIONAL_COLOR_KEYS:
+    for key in COLOR_KEYS + OPTIONAL_COLOR_KEYS + EXTRA_COLOR_KEYS:
         value = normalize_hex(data.get(key))
         if value:
             out[key] = value
@@ -98,10 +101,15 @@ def to_textual_theme(data: dict):
     except Exception:  # noqa: BLE001
         return None
     kwargs = {k: data[k] for k in COLOR_KEYS + OPTIONAL_COLOR_KEYS if k in data}
-    try:
-        return Theme(name=data["name"], dark=data.get("dark", True), **kwargs)
-    except Exception:  # noqa: BLE001
-        return None
+    extra = {f"fipt-{k}": data[k] for k in EXTRA_COLOR_KEYS if k in data}
+    for variables in (extra, None):               # старый Textual без Theme(variables=...) — без доп. цветов
+        try:
+            if variables is None:
+                return Theme(name=data["name"], dark=data.get("dark", True), **kwargs)
+            return Theme(name=data["name"], dark=data.get("dark", True), variables=variables, **kwargs)
+        except Exception:  # noqa: BLE001
+            continue
+    return None
 
 
 _RICH_HEX_RE = re.compile(r"^#?([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$")

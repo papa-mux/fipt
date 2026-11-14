@@ -1,171 +1,199 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # fipt installer / установщик / встановлювач
-#   bash install.sh [--lang en|ru|ua] [--prefix DIR] [--uninstall]
-set -eu
+#   Linux (десктоп): sudo bash install.sh
+#   Termux:          bash install.sh          (root не нужен)
+#   Удаление:        sudo bash install.sh --uninstall
 
-APP=fipt
+APP="fipt"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LANG_CODE=""
-PREFIX_DIR=""
 UNINSTALL=0
 
-usage() {
-  cat <<USAGE
-Usage: bash install.sh [--lang en|ru|ua] [--prefix DIR] [--uninstall]
-
-  --lang       installer/interface language (otherwise asked interactively)
-  --prefix     install under DIR/share/$APP and DIR/bin/$APP
-               (default: \$PREFIX in Termux, /usr/local as root, ~/.local otherwise)
-  --uninstall  remove the installed copy (settings in ~/.config/$APP are kept)
-USAGE
-}
-
-die() { echo "error: $*" >&2; exit 1; }
-need_arg() { [ "$#" -ge 2 ] && [ -n "$2" ] || die "option $1 needs a value"; }
-
+# --- Аргументы ---
 while [ $# -gt 0 ]; do
-  case "$1" in
-    --lang)      need_arg "$@"; LANG_CODE="$2"; shift 2 ;;
-    --prefix)    need_arg "$@"; PREFIX_DIR="$2"; shift 2 ;;
-    --uninstall) UNINSTALL=1; shift ;;
-    -h|--help)   usage; exit 0 ;;
-    *)           usage >&2; die "unknown option: $1" ;;
-  esac
+    case "$1" in
+        --lang)      LANG_CODE="$2"; shift 2 ;;
+        --uninstall) UNINSTALL=1; shift ;;
+        *) echo "Usage: bash install.sh [--lang en|ru|ua] [--uninstall]"; exit 1 ;;
+    esac
 done
 
-# ── язык ──────────────────────────────────────────────────────────────
+# --- Выбор языка ---
 if [ -z "$LANG_CODE" ]; then
-  if [ -t 0 ]; then
-    echo "Select language / Выберите язык / Оберіть мову:"
-    echo "  1) English"
-    echo "  2) Русский"
-    echo "  3) Українська"
-    printf "> "
-    read -r choice || choice=1
-    case "$choice" in 2) LANG_CODE=ru ;; 3) LANG_CODE=ua ;; *) LANG_CODE=en ;; esac
-  else
-    LANG_CODE=en
-  fi
+    if [ -t 0 ]; then
+        echo "Select language / Выберите язык / Оберіть мову:"
+        echo "1) English"
+        echo "2) Русский"
+        echo "3) Українська"
+        read -r -p "> " LANG_CHOICE
+        case "$LANG_CHOICE" in
+            2) LANG_CODE="ru" ;;
+            3) LANG_CODE="ua" ;;
+            *) LANG_CODE="en" ;;
+        esac
+    else
+        LANG_CODE="en"
+    fi
 fi
-case "$LANG_CODE" in en|ru|ua) ;; *) die "unknown language: $LANG_CODE (en, ru, ua)" ;; esac
+case "$LANG_CODE" in
+    en|ru|ua) ;;
+    *) echo "Invalid language / Неверный язык / Невірна мова: $LANG_CODE"; exit 1 ;;
+esac
 
 # say "english" "русский" "українська"
-say() { case "$LANG_CODE" in ru) printf '%s\n' "$2" ;; ua) printf '%s\n' "$3" ;; *) printf '%s\n' "$1" ;; esac; }
-
-# ── куда ставим ───────────────────────────────────────────────────────
-IS_TERMUX=0
-case "${PREFIX:-}" in *com.termux*) IS_TERMUX=1 ;; esac
-
-if [ -z "$PREFIX_DIR" ]; then
-  if [ "$IS_TERMUX" -eq 1 ]; then
-    PREFIX_DIR="$PREFIX"
-  elif [ "$(id -u)" -eq 0 ]; then
-    PREFIX_DIR=/usr/local
-  else
-    PREFIX_DIR="$HOME/.local"
-  fi
-fi
-SHARE_DIR="$PREFIX_DIR/share/$APP"
-BIN_DIR="$PREFIX_DIR/bin"
-BIN="$BIN_DIR/$APP"
-case "$SHARE_DIR" in */share/"$APP") ;; *) die "bad install path: $SHARE_DIR" ;; esac   # защита от rm -rf не того
-
-# ── удаление ──────────────────────────────────────────────────────────
-if [ "$UNINSTALL" -eq 1 ]; then
-  if [ -f "$BIN" ] && grep -q "fipt wrapper" "$BIN" 2>/dev/null; then
-    rm -f "$BIN"
-  fi
-  rm -rf "$SHARE_DIR"
-  say "Removed: $SHARE_DIR and $BIN" \
-      "Удалено: $SHARE_DIR и $BIN" \
-      "Видалено: $SHARE_DIR і $BIN"
-  say "Settings are kept in ~/.config/$APP (delete the folder manually if you want)." \
-      "Настройки остались в ~/.config/$APP (удалите папку вручную, если нужно)." \
-      "Налаштування залишились у ~/.config/$APP (видаліть теку вручну, якщо потрібно)."
-  exit 0
-fi
-
-# ── проверка окружения ────────────────────────────────────────────────
-command -v python3 >/dev/null 2>&1 || {
-  say "python3 not found. Install Python 3.10 or newer." \
-      "python3 не найден. Установите Python 3.10 или новее." \
-      "python3 не знайдено. Встановіть Python 3.10 або новіший."
-  exit 1
-}
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' || {
-  say "Python is too old: 3.10+ is required." \
-      "Python слишком старый: нужен 3.10+." \
-      "Python застарий: потрібен 3.10+."
-  exit 1
+say() {
+    case "$LANG_CODE" in
+        ru) echo "$2" ;;
+        ua) echo "$3" ;;
+        *)  echo "$1" ;;
+    esac
 }
 
-if [ "$IS_TERMUX" -eq 1 ]; then
-  HINT="pkg install python mpv yt-dlp && pip install textual mutagen"
-else
-  HINT="sudo apt install python3 python3-pip mpv yt-dlp && pip3 install --user textual mutagen"
-fi
-
-python3 -c 'import textual' >/dev/null 2>&1 || {
-  say "[!] Python package 'textual' is missing: pip install textual" \
-      "[!] Не установлен пакет 'textual': pip install textual" \
-      "[!] Не встановлено пакет 'textual': pip install textual"
-  say "    Everything at once: $HINT" \
-      "    Всё сразу: $HINT" \
-      "    Все разом: $HINT"
-}
-command -v mpv >/dev/null 2>&1 || {
-  say "[!] mpv not found in PATH — fipt can't play without it." \
-      "[!] mpv не найден в PATH — без него fipt ничего не проиграет." \
-      "[!] mpv не знайдено в PATH — без нього fipt нічого не зіграє."
-}
-python3 -c 'import mutagen' >/dev/null 2>&1 || {
-  say "[i] optional: pip install mutagen — track names from tags in the queue." \
-      "[i] по желанию: pip install mutagen — названия треков из тегов в очереди." \
-      "[i] за бажанням: pip install mutagen — назви треків із тегів у черзі."
-}
-command -v yt-dlp >/dev/null 2>&1 || {
-  say "[i] optional: yt-dlp — to play YouTube and other links." \
-      "[i] по желанию: yt-dlp — для ссылок на YouTube и другие сайты." \
-      "[i] за бажанням: yt-dlp — для посилань на YouTube та інші сайти."
-}
-
-# ── копирование ───────────────────────────────────────────────────────
-mkdir -p "$BIN_DIR" || die "cannot create $BIN_DIR (try: sudo bash install.sh, or --prefix ~/.local)"
-if [ "$SRC" != "$SHARE_DIR" ]; then
-  rm -rf "$SHARE_DIR"
-  mkdir -p "$SHARE_DIR" || die "cannot create $SHARE_DIR"
-  for item in fipt fiptui locales themes data LICENSE README.md README_RU.md README_UA.md; do
-    [ -e "$SRC/$item" ] && cp -R "$SRC/$item" "$SHARE_DIR/"
-  done
-  find "$SHARE_DIR" -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
-fi
-chmod +x "$SHARE_DIR/fipt"
-
-SH_PATH=/bin/sh
-if [ -n "${PREFIX:-}" ] && [ -x "$PREFIX/bin/sh" ]; then SH_PATH="$PREFIX/bin/sh"; fi   # Termux: нет /bin
-cat > "$BIN" <<WRAP
-#!$SH_PATH
-# fipt wrapper (generated by install.sh)
-exec python3 "$SHARE_DIR/fipt" "\$@"
-WRAP
-chmod +x "$BIN"
-
-# ── язык интерфейса по умолчанию (не трогаем уже существующие настройки) ─
-CONF_DIR="$HOME/.config/$APP"
-if [ ! -f "$CONF_DIR/settings.json" ]; then
-  mkdir -p "$CONF_DIR" 2>/dev/null && printf '{\n  "language": "%s"\n}\n' "$LANG_CODE" > "$CONF_DIR/settings.json" || true
-fi
-
-echo
-say "Done! Run it from anywhere with:  $APP" \
-    "Готово! Запускайте из любой папки командой:  $APP" \
-    "Готово! Запускайте з будь-якої теки командою:  $APP"
-say "Settings: $CONF_DIR/settings.json" \
-    "Настройки: $CONF_DIR/settings.json" \
-    "Налаштування: $CONF_DIR/settings.json"
-case ":$PATH:" in
-  *":$BIN_DIR:"*) ;;
-  *) say "[!] $BIN_DIR is not in PATH. Add to ~/.bashrc:  export PATH=\"$BIN_DIR:\$PATH\"" \
-         "[!] $BIN_DIR нет в PATH. Добавьте в ~/.bashrc:  export PATH=\"$BIN_DIR:\$PATH\"" \
-         "[!] $BIN_DIR немає в PATH. Додайте в ~/.bashrc:  export PATH=\"$BIN_DIR:\$PATH\"" ;;
+# --- Определение окружения ---
+# Termux: свой $PREFIX, root не нужен. Обычный Linux: системные каталоги, нужен sudo.
+case "$PREFIX" in
+    *com.termux*)
+        BIN_DIR="$PREFIX/bin"
+        SHARE_DIR="$PREFIX/share/$APP"
+        ;;
+    *)
+        BIN_DIR="/bin"
+        SHARE_DIR="/usr/share/$APP"
+        if [ "$(id -u)" -ne 0 ]; then
+            say "Error: run the installer with sudo:  sudo bash install.sh" \
+                "Ошибка: запустите установщик через sudo:  sudo bash install.sh" \
+                "Помилка: запустіть встановлювач через sudo:  sudo bash install.sh"
+            exit 1
+        fi
+        ;;
 esac
+
+# --- Прежняя раскладка (/usr/local): убираем, иначе старая ссылка в PATH перекроет новую ---
+cleanup_legacy() {
+    case "$PREFIX" in *com.termux*) return ;; esac
+    if [ -L /usr/local/bin/$APP ] || [ -d /usr/local/share/$APP ]; then
+        rm -f /usr/local/bin/$APP
+        rm -rf /usr/local/share/$APP
+        say "Removed the old installation from /usr/local." \
+            "Старая установка из /usr/local удалена." \
+            "Стару установку з /usr/local видалено."
+    fi
+}
+
+# --- Удаление ---
+if [ "$UNINSTALL" -eq 1 ]; then
+    cleanup_legacy
+    rm -f "$BIN_DIR/$APP"
+    rm -rf "$SHARE_DIR"
+    say "Removed: $BIN_DIR/$APP and $SHARE_DIR" \
+        "Удалено: $BIN_DIR/$APP и $SHARE_DIR" \
+        "Видалено: $BIN_DIR/$APP і $SHARE_DIR"
+    say "Your settings are kept in ~/.config/$APP (delete the folder by hand if you want to)." \
+        "Ваши настройки остались в ~/.config/$APP (удалите папку вручную, если нужно)." \
+        "Ваші налаштування залишились у ~/.config/$APP (видаліть теку вручну, якщо потрібно)."
+    exit 0
+fi
+
+echo ""
+say "Installing $APP..." "Установка $APP..." "Встановлення $APP..."
+echo ""
+
+# --- Проверка исходных файлов ---
+if [ ! -f "$SRC/$APP" ] || [ ! -d "$SRC/fiptui" ]; then
+    say "Error: files '$APP' and 'fiptui' not found next to install.sh." \
+        "Ошибка: файлы '$APP' и 'fiptui' не найдены рядом с install.sh." \
+        "Помилка: файли '$APP' і 'fiptui' не знайдено поруч з install.sh."
+    say "Run the script from the root of the fipt repository." \
+        "Запустите скрипт из корня репозитория fipt." \
+        "Запустіть скрипт з кореня репозиторію fipt."
+    exit 1
+fi
+
+# --- Предупреждения (установку не останавливают) ---
+command -v python3 >/dev/null 2>&1 || {
+    say "Error: python3 not found. Install Python 3.10 or newer." \
+        "Ошибка: python3 не найден. Установите Python 3.10 или новее." \
+        "Помилка: python3 не знайдено. Встановіть Python 3.10 або новіший."
+    exit 1
+}
+python3 -c "import textual" >/dev/null 2>&1 || \
+    say "[!] Python package 'textual' is missing:  pip install textual" \
+        "[!] Не установлен пакет 'textual':  pip install textual" \
+        "[!] Не встановлено пакет 'textual':  pip install textual"
+command -v mpv >/dev/null 2>&1 || \
+    say "[!] mpv not found — fipt can't play without it." \
+        "[!] mpv не найден — без него fipt ничего не проиграет." \
+        "[!] mpv не знайдено — без нього fipt нічого не зіграє."
+
+# --- Копирование файлов ---
+case "$SHARE_DIR" in
+    */share/"$APP") ;;
+    *) echo "Error: bad install path: $SHARE_DIR"; exit 1 ;;
+esac
+say "Copying files to $SHARE_DIR..." \
+    "Копирование файлов в $SHARE_DIR..." \
+    "Копіювання файлів до $SHARE_DIR..."
+
+cleanup_legacy
+mkdir -p "$BIN_DIR" || { echo "Error: cannot create $BIN_DIR"; exit 1; }
+if [ "$SRC" != "$SHARE_DIR" ]; then
+    rm -rf "$SHARE_DIR"        # старая копия удаляется целиком, чтобы не оставались устаревшие модули
+    mkdir -p "$SHARE_DIR" || { echo "Error: cannot create $SHARE_DIR"; exit 1; }
+    for item in "$APP" fiptui locales themes data LICENSE README.md README_RU.md README_UA.md; do
+        [ -e "$SRC/$item" ] && cp -R "$SRC/$item" "$SHARE_DIR/"
+    done
+    find "$SHARE_DIR" -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null
+fi
+chmod -R a+rX "$SHARE_DIR"     # читать и запускать должен любой пользователь, а не только тот, кто ставил
+
+if [ ! -f "$SHARE_DIR/$APP" ]; then
+    say "Error: $APP was not copied!" "Ошибка: $APP не скопирован!" "Помилка: $APP не скопійовано!"
+    exit 1
+fi
+chmod +x "$SHARE_DIR/$APP"
+
+# --- Команда fipt: ссылка на сам лаунчер (никаких оберток) ---
+say "Creating command $APP..." "Создание команды $APP..." "Створення команди $APP..."
+ln -sf "$SHARE_DIR/$APP" "$BIN_DIR/$APP" || { echo "Error: cannot create $BIN_DIR/$APP"; exit 1; }
+
+# --- Язык интерфейса по умолчанию (существующие настройки не трогаем) ---
+# Под sudo $HOME указывает на root, поэтому берём домашнюю папку того, кто вызвал sudo.
+CONF_HOME="$HOME"
+CONF_OWNER=""
+if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+    CONF_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+    CONF_OWNER="$SUDO_USER"
+fi
+if [ -n "$CONF_HOME" ] && [ -d "$CONF_HOME" ] && [ ! -f "$CONF_HOME/.config/$APP/settings.json" ]; then
+    mkdir -p "$CONF_HOME/.config/$APP" &&
+        printf '{\n  "language": "%s"\n}\n' "$LANG_CODE" > "$CONF_HOME/.config/$APP/settings.json"
+    [ -n "$CONF_OWNER" ] && chown -R "$CONF_OWNER": "$CONF_HOME/.config/$APP" 2>/dev/null
+fi
+
+# --- Проверка и финальное сообщение ---
+if [ -x "$BIN_DIR/$APP" ]; then
+    echo ""
+    say "Installation completed successfully!" \
+        "Установка успешно завершена!" \
+        "Встановлення успішно завершено!"
+    echo ""
+    say "Now you can run the player with the command:" \
+        "Теперь вы можете запустить плеер командой:" \
+        "Тепер ви можете запустити плеєр командою:"
+    echo "  $APP"
+    echo ""
+    say "All project files are located in:" \
+        "Все файлы проекта находятся в:" \
+        "Всі файли проєкту знаходяться в:"
+    echo "  $SHARE_DIR"
+    echo ""
+    say "Settings:" "Настройки:" "Налаштування:"
+    echo "  ~/.config/$APP/settings.json"
+    echo ""
+else
+    say "Something went wrong. The executable file was not installed." \
+        "Что-то пошло не так. Исполняемый файл не был установлен." \
+        "Щось пішло не так. Виконуваний файл не було встановлено."
+    exit 1
+fi
+

@@ -1,0 +1,15 @@
+{
+  "name": "fipt-dark",
+  "dark": true,
+  "primary": "#b388ff",
+  "secondary": "#82b1ff",
+  "accent": "#ff4081",
+  "background": "#0a0910",
+  "surface": "#141221",
+  "panel": "#1e1a30",
+  "foreground": "#e0e0e0",
+  "warning": "#ffab40",
+  "error": "#ff5252",
+  "success": "#69f0ae",
+  "editor_theme": "dracula"
+}

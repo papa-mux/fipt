@@ -84,7 +84,7 @@ class ThemeEditorScreen(ModalScreen):
                 with Horizontal(classes="te_row"):
                     yield Switch(value=bool(base.get("dark", True)), id="te_dark")
                     yield Label(self._t("theme_dark"), classes="te_label")
-                for key in themes.COLOR_KEYS:
+                for key in themes.EDITOR_KEYS:
                     yield Label(self._t(f"theme_color_{key}"), classes="te_label")
                     with Horizontal(classes="te_row"):
                         yield Input(value=str(base.get(key, "")), placeholder="#RRGGBB",
@@ -97,7 +97,7 @@ class ThemeEditorScreen(ModalScreen):
                 yield Button(self._t("btn_cancel"), variant="default", id="te_cancel", classes="te_btn")
 
     def on_mount(self) -> None:
-        for key in themes.COLOR_KEYS:
+        for key in themes.EDITOR_KEYS:
             self._paint(key, self.query_one(f"#te_{key}", Input).value)
 
     def _paint(self, key: str, value: str) -> None:
@@ -111,7 +111,7 @@ class ThemeEditorScreen(ModalScreen):
     @on(Input.Changed)
     def _color_changed(self, event: Input.Changed) -> None:
         iid = event.input.id or ""
-        if iid.startswith("te_") and iid[3:] in themes.COLOR_KEYS:
+        if iid.startswith("te_") and iid[3:] in themes.EDITOR_KEYS:
             self._paint(iid[3:], event.value)
 
     def _error(self, text: str) -> None:
@@ -126,7 +126,7 @@ class ThemeEditorScreen(ModalScreen):
             "name": name,
             "dark": self.query_one("#te_dark", Switch).value,
         }
-        for key in themes.COLOR_KEYS:
+        for key in themes.EDITOR_KEYS:
             raw = self.query_one(f"#te_{key}", Input).value.strip()
             if not raw:
                 if key == "primary":
@@ -138,6 +138,9 @@ class ThemeEditorScreen(ModalScreen):
                 self._error(self._t("theme_err_color", field=self._t(f"theme_color_{key}")))
                 return
             data[key] = color
+        for key in themes.OPTIONAL_COLOR_KEYS:             # warning/error/success в редакторе не правятся — сохраняем
+            if key in self._base:
+                data[key] = self._base[key]
         err = themes.save_user_theme(data)
         if err:
             self._error(self._t("theme_err_write", err=err))

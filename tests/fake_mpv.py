@@ -100,8 +100,11 @@ async def handle(reader, writer):
             ok()
             sync_playlist()
         elif name == "stop":
-            files.clear()
+            if "keep-playlist" not in cmd[1:]:
+                files.clear()
             props["playlist-pos"] = -1
+            if "idle-active" in props:
+                props["idle-active"] = True
             ok()
             sync_playlist()
         elif name in ("playlist-next", "playlist-prev"):

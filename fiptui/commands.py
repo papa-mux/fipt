@@ -22,6 +22,7 @@ class SettingsCommands(Provider):
             (tr(L, "cmd_playback"), tr(L, "cmd_playback_help"), app.action_open_playback),
             (tr(L, "cmd_general"), tr(L, "cmd_general_help"), app.action_open_general),
             (tr(L, "cmd_paths"), tr(L, "cmd_paths_help"), app.action_open_paths),
+            (tr(L, "cmd_keybindings"), tr(L, "cmd_keybindings_help"), app.action_open_keybindings),
         ]
 
     def _quick(self):
@@ -36,6 +37,12 @@ class SettingsCommands(Provider):
             (tr(L, "cmd_video_window"), tr(L, "cmd_video_window_help"),
              partial(app.action_set_option, "video", "window")),
         ]
+        for v in CHOICES["layout"]:
+            e.append((tr(L, "cmd_layout", name=tr(L, f"opt_layout_{v}")), tr(L, "cmd_layout_help"),
+                      partial(app.action_set_option, "layout", v)))
+        for v in CHOICES["icons"]:
+            e.append((tr(L, "cmd_icons", name=tr(L, f"opt_icons_{v}")), tr(L, "cmd_icons_help"),
+                      partial(app.action_set_option, "icons", v)))
         for vo in CHOICES["terminal_vo"]:
             e.append((tr(L, "cmd_terminal_vo", name=vo), tr(L, "cmd_terminal_vo_help"),
                       partial(app.action_set_option, "terminal_vo", vo)))

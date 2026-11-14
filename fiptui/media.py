@@ -140,12 +140,17 @@ def meta_get(metadata, *keys: str) -> str:
     return ""
 
 
-def now_playing_text(title: str, metadata) -> tuple[str, str]:
-    """-> (строка заголовка, строка подзаголовка) для панели «Сейчас играет»."""
+def split_now_playing(title: str, metadata) -> tuple[str, str, str]:
+    """-> (название, исполнитель, альбом). Название: тег title, иначе media-title от mpv."""
     artist = meta_get(metadata, "artist", "album_artist", "performer")
     album = meta_get(metadata, "album")
-    tag_title = meta_get(metadata, "title")
-    main = tag_title or fix_mojibake(title or "")
+    main = meta_get(metadata, "title") or fix_mojibake(title or "")
+    return main, artist, album
+
+
+def now_playing_text(title: str, metadata) -> tuple[str, str]:
+    """-> (строка заголовка «Исполнитель — Название», альбом) для классической панели."""
+    main, artist, album = split_now_playing(title, metadata)
     if artist and main:
         main = f"{artist} — {main}"
     return main, album

@@ -1,0 +1,15 @@
+{
+  "name": "fipt-light",
+  "dark": false,
+  "primary": "#7c4dff",
+  "secondary": "#536dfe",
+  "accent": "#f50057",
+  "background": "#f5f5f7",
+  "surface": "#ffffff",
+  "panel": "#e0e0e8",
+  "foreground": "#1c1c1e",
+  "warning": "#ff9800",
+  "error": "#d32f2f",
+  "success": "#00c853",
+  "editor_theme": "github_light"
+}
